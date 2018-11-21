@@ -24,6 +24,7 @@ struct builtin {
 
 extern std::unordered_map<string, builtin> builtins;
 extern int shell_pid, shell_pgid;
+extern bool exit_flag;
 
 void init_builtins();
 

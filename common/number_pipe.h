@@ -12,6 +12,7 @@ public:
 	void reduce_count();
 	const Fd2* get_fd2(int) const;
 	void set_fd2(int, const Fd2&);
+	void close();
 };
 
 #endif

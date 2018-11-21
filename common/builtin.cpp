@@ -13,6 +13,7 @@
 using std::string;
 
 std::unordered_map<string, builtin> builtins;
+bool exit_flag;
 
 builtin::builtin() {
 	handler = NULL;
@@ -47,7 +48,8 @@ int bin_break(
 	UNUSED(const char *const argv[]),
 	UNUSED(const char *opts)
 ) {
-	exit(0);
+	// exit(0);
+	exit_flag = true;
 	return 0;
 }
 

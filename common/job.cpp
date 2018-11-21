@@ -13,7 +13,14 @@ using std::vector;
 
 const char delims[] = "|!";
 
-job::job() : pipe_next_n(0), pipe_next_err(false), pipe_in({STDIN_FILENO, -1}), pipe_out({-1, STDOUT_FILENO}), pipe_err({-1, STDERR_FILENO}) {
+job::job() :
+	IN_FILENO(STDIN_FILENO),
+	OUT_FILENO(STDOUT_FILENO),
+	pipe_next_n(0),
+	pipe_next_err(false),
+	pipe_in({IN_FILENO, -1}),
+	pipe_out({-1, OUT_FILENO}),
+	pipe_err({-1, STDERR_FILENO}) {
 }
 
 job::job(const char* cmd_in) : job() {
@@ -36,7 +43,15 @@ job::job(const char* cmd_in) : job() {
 	delete[] cmd_;
 }
 
-pid_t create_process(const command& argv0, int in_fd, int out_fd, int err_fd) {
+void job::set_stdin_fileno(int fd) {
+	pipe_in[0] = IN_FILENO = fd;
+}
+
+void job::set_stdout_fileno(int fd) {
+	pipe_out[1] = OUT_FILENO = fd;
+}
+
+pid_t create_process(const command& argv0, int IN_FILENO, int OUT_FILENO, int in_fd, int out_fd, int err_fd) {
 	pid_t pid;
 	while ((pid = fork()) < 0) {
 		debug("Fork error: %s", strerror(errno));
@@ -67,10 +82,10 @@ pid_t create_process(const command& argv0, int in_fd, int out_fd, int err_fd) {
 			dup2(err_fd, STDERR_FILENO);
 		}
 
-		if (in_fd != STDIN_FILENO) {
+		if (in_fd != IN_FILENO) {
 			close(in_fd);
 		}
-		if (out_fd != STDOUT_FILENO) {
+		if (out_fd != OUT_FILENO) {
 			close(out_fd);
 		}
 		if (err_fd != STDERR_FILENO) {
@@ -107,7 +122,7 @@ int job::exec() {
 				debug("Cannot create pipe: %s", strerror(errno));
 				usleep(100);
 			}
-		} else if (pipe_next_n > 0 && pipe_out[1] == STDOUT_FILENO) {
+		} else if (pipe_next_n > 0 && pipe_out[1] == OUT_FILENO) {
 			// Create pipe to forward message to the next n-th line
 			while (pipe(pipe_out.data()) == -1) {
 				debug("Cannot create pipe: %s", strerror(errno));
@@ -124,16 +139,16 @@ int job::exec() {
 			pid_t pid = 0;
 			pids.emplace_back(pid);
 		} else {
-			pid_t pid = create_process(argv, pipe_in_i[0], pipe_out_i[1], pipe_err_i[1]);
+			pid_t pid = create_process(argv, IN_FILENO, OUT_FILENO, pipe_in_i[0], pipe_out_i[1], pipe_err_i[1]);
 			pids.emplace_back(pid);
 			if (i == 0)
 				pgid = pid;
 			setpgid(pid, pgid);
 		}
-		if (pipe_in_i[0] != STDIN_FILENO) {
+		if (pipe_in_i[0] != IN_FILENO) {
 			close(pipe_in_i[0]);
 		}
-		if (pipe_out_i[1] != STDOUT_FILENO) {
+		if (pipe_out_i[1] != OUT_FILENO) {
 			if (pipe_next_n == 0 || i != size()-1) {
 				close(pipe_out_i[1]);
 			}

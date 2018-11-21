@@ -13,9 +13,11 @@ using std::vector;
 
 typedef std::array<int,2> Fd2;
 
-pid_t create_process(const command&, int, int, const vector<Fd2>&);
+pid_t create_process(const command&, int, int, int, int, const vector<Fd2>&);
 
 class job : public vector<command> {
+private:
+	int IN_FILENO, OUT_FILENO;
 public:
 	vector<pid_t> pids;
 	pid_t pgid;
@@ -26,6 +28,8 @@ public:
 
 	job();
 	job(const char*);
+	void set_stdin_fileno(int);
+	void set_stdout_fileno(int);
 	int exec();
 };
 

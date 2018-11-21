@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include "number_pipe.h"
 
 bool cmp_fd_pair(const pair<int,Fd2>& a, const int n) {
@@ -21,5 +22,12 @@ void number_pipe::set_fd2(int n, const Fd2& fd) {
 		ptr->second = move(fd);
 	} else {
 		emplace(ptr, n, fd);
+	}
+}
+
+void number_pipe::close() {
+	for(auto& fd: *this) {
+		::close(fd.second[0]);
+		::close(fd.second[1]);
 	}
 }
