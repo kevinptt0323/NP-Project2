@@ -1,20 +1,17 @@
-CXX = g++
-CXXFLAGS = -std=c++14 -Wall -Wextra -O2
+include ../common/make.common
+
 EXEC = npshell
-OBJS = builtin.o command.o job.o signal_handler.o utils.o
+OBJS = ${COMMON}/builtin.o \
+       ${COMMON}/command.o \
+       ${COMMON}/job.o \
+       ${COMMON}/signal_handler.o \
+       ${COMMON}/utils.o
 
 .PHONY: all
 all: $(EXEC)
 
 $(EXEC): main.cpp $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $^
-
-%.o: %.cpp %.h
-	$(CXX) $(CXXFLAGS) -o $@ $< -c
-
-install: $(EXEC)
-	mkdir -p $(TARGET_DIR)
-	cp $(EXEC) $(TARGET_DIR)
+	$(CXX) $(CXXFLAGS) -o $@ $^ -I${COMMON}
 
 clean:
-	$(RM) $(EXEC) $(OBJS)
+	$(RM) $(EXEC)
