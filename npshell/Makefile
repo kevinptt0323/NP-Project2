@@ -4,6 +4,7 @@ EXEC = npshell
 OBJS = ${COMMON}/builtin.o \
        ${COMMON}/command.o \
        ${COMMON}/job.o \
+       ${COMMON}/number_pipe.o \
        ${COMMON}/signal_handler.o \
        ${COMMON}/utils.o
 

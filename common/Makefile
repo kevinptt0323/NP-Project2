@@ -1,6 +1,6 @@
 include ../common/make.common
 
-OBJS = builtin.o command.o job.o signal_handler.o utils.o
+OBJS = builtin.o command.o job.o number_pipe.o signal_handler.o utils.o
 
 .PHONY: all
 all: $(OBJS)
