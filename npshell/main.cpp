@@ -39,7 +39,10 @@ int main() {
 
 	job("setenv PATH bin:.").exec();
 
-	while (1) {
+	extern bool exit_flag;
+	exit_flag = false;
+
+	while (!exit_flag) {
 		print_prompt(prompt);
 		if (input_command(buf, BUF_SIZE)) {
 			if (strlen(buf) > 0) {

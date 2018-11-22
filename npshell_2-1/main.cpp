@@ -38,6 +38,15 @@ int start_tcp_server(const int port) {
 	if (listen(sockfd, 1) != 0) {
 		fprintf(stderr, "Fail to listen to socket.\n");
 	}
+
+	int reuse = 1;
+	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (const char*)&reuse, sizeof(reuse)) < 0)
+		perror("setsockopt(SO_REUSEADDR) failed");
+#ifdef SO_REUSEPORT
+	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, (const char*)&reuse, sizeof(reuse)) < 0)
+		perror("setsockopt(SO_REUSEPORT) failed");
+#endif
+
 	return sockfd;
 }
 
@@ -48,9 +57,10 @@ void print_prompt(int fd, const char* prompt) {
 char* input_command(int fd, char* buf, int bufsize) {
 	int len = read(fd, buf, bufsize - 1);
 	buf[len] = '\0';
-	if (buf[len-1] == '\n') {
-		buf[len-1] = '\0';
+	while (len && buf[len-1] < 32) {
+		buf[--len] = '\0';
 	}
+	fprintf(stdout, "get %d \"%s\"\n", len, buf);
 	return buf;
 }
 
@@ -69,6 +79,7 @@ void remote_shell(int client_sockfd) {
 				job curr_job(buf);
 				curr_job.set_stdin_fileno(client_sockfd);
 				curr_job.set_stdout_fileno(client_sockfd);
+				curr_job.set_stderr_fileno(client_sockfd);
 				const Fd2* pipe_in = number_pipe_manager.get_fd2(0);
 				if (pipe_in) {
 					curr_job.pipe_in = move(*pipe_in);
@@ -93,6 +104,7 @@ void remote_shell(int client_sockfd) {
 	}
 
 	number_pipe_manager.close();
+	close(client_sockfd);
 }
 
 int main(int argc, char* argv[]) {

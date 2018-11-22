@@ -6,9 +6,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include "type.h"
+
 using std::string;
 
-typedef int (*HandlerFunc)(const char*, const char *const[], const char*);
+typedef int (*HandlerFunc)(const char*, const char *const[], const char*, const FILENO&);
 
 struct builtin {
 	string name;
@@ -18,8 +20,8 @@ struct builtin {
 	builtin();
 	builtin(const char*, HandlerFunc, const char*);
 	~builtin();
-	int exec(const char *const[]);
-	int exec(const std::vector<string>&);
+	int exec(const char *const[], const FILENO& = DEFAULT_FILENO);
+	int exec(const std::vector<string>&, const FILENO& = DEFAULT_FILENO);
 };
 
 extern std::unordered_map<string, builtin> builtins;

@@ -16,11 +16,12 @@ const char delims[] = "|!";
 job::job() :
 	IN_FILENO(STDIN_FILENO),
 	OUT_FILENO(STDOUT_FILENO),
+	ERR_FILENO(STDERR_FILENO),
 	pipe_next_n(0),
 	pipe_next_err(false),
 	pipe_in({IN_FILENO, -1}),
 	pipe_out({-1, OUT_FILENO}),
-	pipe_err({-1, STDERR_FILENO}) {
+	pipe_err({-1, ERR_FILENO}) {
 }
 
 job::job(const char* cmd_in) : job() {
@@ -51,7 +52,11 @@ void job::set_stdout_fileno(int fd) {
 	pipe_out[1] = OUT_FILENO = fd;
 }
 
-pid_t create_process(const command& argv0, int IN_FILENO, int OUT_FILENO, int in_fd, int out_fd, int err_fd) {
+void job::set_stderr_fileno(int fd) {
+	pipe_err[1] = ERR_FILENO = fd;
+}
+
+pid_t create_process(const command& argv0, int IN_FILENO, int OUT_FILENO, int ERR_FILENO, int in_fd, int out_fd, int err_fd) {
 	pid_t pid;
 	while ((pid = fork()) < 0) {
 		debug("Fork error: %s", strerror(errno));
@@ -88,7 +93,7 @@ pid_t create_process(const command& argv0, int IN_FILENO, int OUT_FILENO, int in
 		if (out_fd != OUT_FILENO) {
 			close(out_fd);
 		}
-		if (err_fd != STDERR_FILENO) {
+		if (err_fd != ERR_FILENO) {
 			close(err_fd);
 		}
 
@@ -133,13 +138,13 @@ int job::exec() {
 		Fd2 pipe_in_i = i == 0 ? pipe_in : pipes[i-1];
 		Fd2 pipe_out_i = i == size()-1 ? pipe_out : pipes[i];
 		Fd2 pipe_err_i = i == size()-1 && pipe_next_err ? pipe_out_i : pipe_err;
-		auto &argv = operator[](i);
+		const auto &argv = operator[](i);
 		if (builtins.find(argv[0]) != builtins.end()) {
-			builtins[argv[0]].exec(argv);
+			builtins[argv[0]].exec(argv, {IN_FILENO, OUT_FILENO, ERR_FILENO});
 			pid_t pid = 0;
 			pids.emplace_back(pid);
 		} else {
-			pid_t pid = create_process(argv, IN_FILENO, OUT_FILENO, pipe_in_i[0], pipe_out_i[1], pipe_err_i[1]);
+			pid_t pid = create_process(argv, IN_FILENO, OUT_FILENO, ERR_FILENO, pipe_in_i[0], pipe_out_i[1], pipe_err_i[1]);
 			pids.emplace_back(pid);
 			if (i == 0)
 				pgid = pid;

@@ -6,6 +6,7 @@ OBJS = ${COMMON}/builtin.o \
        ${COMMON}/job.o \
        ${COMMON}/number_pipe.o \
        ${COMMON}/signal_handler.o \
+       ${COMMON}/type.o \
        ${COMMON}/utils.o
 
 .PHONY: all

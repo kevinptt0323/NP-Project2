@@ -7,17 +7,16 @@
 #include <fcntl.h>
 
 #include "command.h"
+#include "type.h"
 
 using std::string;
 using std::vector;
 
-typedef std::array<int,2> Fd2;
-
-pid_t create_process(const command&, int, int, int, int, const vector<Fd2>&);
+pid_t create_process(const command&, int, int, int, int, int, const vector<Fd2>&);
 
 class job : public vector<command> {
 private:
-	int IN_FILENO, OUT_FILENO;
+	int IN_FILENO, OUT_FILENO, ERR_FILENO;
 public:
 	vector<pid_t> pids;
 	pid_t pgid;
@@ -30,6 +29,7 @@ public:
 	job(const char*);
 	void set_stdin_fileno(int);
 	void set_stdout_fileno(int);
+	void set_stderr_fileno(int);
 	int exec();
 };
 

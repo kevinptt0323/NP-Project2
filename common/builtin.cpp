@@ -1,7 +1,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <unistd.h>
 #include <signal.h>
 
 #include "builtin.h"
@@ -27,26 +26,27 @@ builtin::builtin(const char *_name, HandlerFunc _handler, const char *_opts) {
 
 builtin::~builtin() { }
 
-int builtin::exec(const std::vector<string>& argv0) {
+int builtin::exec(const std::vector<string>& argv0, const FILENO& fileno) {
 	const char** argv = new const char*[argv0.size()+1];
 	for(size_t i=0; i<argv0.size(); i++) {
 		argv[i] = argv0[i].c_str();
 	}
 	argv[argv0.size()] = NULL;
 
-	int ret = exec(argv);
+	int ret = exec(argv, fileno);
 	delete[] argv;
 	return ret;
 }
 
-int builtin::exec(const char *const argv[]) {
-	return handler(name.c_str(), argv, opts.c_str());
+int builtin::exec(const char *const argv[], const FILENO& fileno) {
+	return handler(name.c_str(), argv, opts.c_str(), fileno);
 }
 
 int bin_break(
 	UNUSED(const char *name),
 	UNUSED(const char *const argv[]),
-	UNUSED(const char *opts)
+	UNUSED(const char *opts),
+	UNUSED(const FILENO& fileno)
 ) {
 	// exit(0);
 	exit_flag = true;
@@ -56,7 +56,8 @@ int bin_break(
 int bin_setenv(
 	UNUSED(const char *name),
 	const char *const argv[],
-	UNUSED(const char *opts)
+	UNUSED(const char *opts),
+	UNUSED(const FILENO& fileno)
 ) {
 	const char* key = argv[1];
 	const char* val = argv[2];
@@ -69,7 +70,8 @@ int bin_setenv(
 int bin_printenv(
 	UNUSED(const char *name),
 	const char *const argv[],
-	UNUSED(const char *opts)
+	UNUSED(const char *opts),
+	const FILENO& fileno
 ) {
 	const char* key = argv[1];
 	if (key == NULL) {
@@ -79,16 +81,16 @@ int bin_printenv(
 	if (env == NULL) {
 		return -1;
 	}
-	fputs(env, stdout);
-	fputs("\n", stdout);
-	fflush(stdout);
+	write(fileno.OUT, env, strlen(env));
+	write(fileno.OUT, "\n", 1);
 	return 0;
 }
 
 int bin_unsetenv(
 	UNUSED(const char *name),
 	const char *const argv[],
-	UNUSED(const char *opts)
+	UNUSED(const char *opts),
+	UNUSED(const FILENO& fileno)
 ) {
 	const char* key = argv[1];
 	return unsetenv(key);
