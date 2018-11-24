@@ -64,13 +64,9 @@ void print_prompt(int fd, const char* prompt) {
 char* input_command(int fd, char* buf, int bufsize) {
 	int len = read(fd, buf, bufsize - 1);
 	buf[len] = '\0';
-	fprintf(stdout, "get %d", len);
-	for(int i=0; i<len; i++) fprintf(stdout, " %d", buf[i]);
-	fprintf(stdout, "\n");
 	while (len && buf[len-1] < 32) {
 		buf[--len] = '\0';
 	}
-	fprintf(stdout, "get %d \"%s\"\n", len, buf);
 	return buf;
 }
 
@@ -143,6 +139,31 @@ int bin_who(
 	return 0;
 }
 
+int bin_tell(
+	UNUSED(const char *name),
+	UNUSED(const char *const argv[]),
+	const char *opts,
+	const Args& args
+) {
+	User& me = args.get<User>("user");
+	char* raw = args.get<char[]>("raw");
+	char* message;
+	bool yell = strcmp(opts, "broadcast") == 0;
+	for(int i=0, cnt=0; raw[i]; i++) {
+		if (i > 0 && raw[i] == ' ' && raw[i-1] != ' ') {
+			cnt++;
+		}
+		if (cnt == (yell ? 1 : 2) && raw[i] != ' ') {
+			message = raw + i;
+			break;
+		}
+	}
+	stringstream ss;
+	ss << "*** " << me.nickname << " " << (yell ? "yelled" : "told you") << "***: " << message << endl;
+	user_manager.broadcast(ss.str());
+	return 0;
+}
+
 int bin_name(
 	UNUSED(const char *name),
 	UNUSED(const char *const argv[]),
@@ -165,6 +186,8 @@ int main(int argc, char* argv[]) {
 	init_builtins();
 
 	add_builtin("who", bin_who, "");
+	add_builtin("tell", bin_tell, "");
+	add_builtin("yell", bin_tell, "broadcast");
 	add_builtin("name", bin_name, "");
 
 	int max_fd = sockfd;
@@ -219,6 +242,7 @@ int main(int argc, char* argv[]) {
 							Args args;
 							args["fileno"] = new FILENO(DEFAULT_FILENO);
 							args["user"] = &*user;
+							args["raw"] = &buf;
 							curr_job.exec(args);
 							if (curr_job.pipe_next_n > 0 && !same_pipe_next_n) {
 								user->number_pipe_manager.set_fd2(curr_job.pipe_next_n, curr_job.pipe_out);
@@ -228,10 +252,14 @@ int main(int argc, char* argv[]) {
 						job("exit").exec();
 					}
 					if (exit_flag) {
+						string nickname = user->nickname;
 						user_manager.logout(user);
 						close(client_sockfd);
-						exit_flag = false;
+						stringstream ss;
+						ss << "*** User '" << nickname << "' left. ***" << endl;
+						user_manager.broadcast(ss.str());
 						FD_CLR(client_sockfd, &master);
+						exit_flag = false;
 					} else {
 						print_prompt(client_sockfd, prompt);
 					}

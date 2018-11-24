@@ -26,6 +26,9 @@ public:
 	bool operator==(const User&) const;
 	bool operator==(const int&) const;
 	operator bool() const;
+	void send(const char*, const int&) const;
+	void send(const char*) const;
+	void send(const string&) const;
 };
 
 ostream& operator<<(ostream&, const sockaddr_in&);
@@ -39,9 +42,9 @@ public:
 	void logout(const int&);
 	void logout(const iterator&);
 	UserManager::iterator find(const int&);
-	void broadcast(const char*);
-	void broadcast(const char*, const int&);
-	void broadcast(const string&);
+	void broadcast(const char*, const int&) const;
+	void broadcast(const char*) const;
+	void broadcast(const string&) const;
 };
 
 #endif

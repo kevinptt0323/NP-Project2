@@ -17,6 +17,20 @@ User::operator bool() const {
 	return sockfd != -1;
 }
 
+void User::send(const char* s, const int& length) const {
+	if (*this) {
+		write(sockfd, s, length);
+	}
+}
+
+void User::send(const char* s) const {
+	send(s, strlen(s));
+}
+
+void User::send(const string& s) const {
+	send(s.c_str(), s.length());
+}
+
 ostream& operator<<(ostream& out, const sockaddr_in& addr) {
 	char ip_address[INET_ADDRSTRLEN];
 	inet_ntop(AF_INET, &(addr.sin_addr), ip_address, INET_ADDRSTRLEN);
@@ -64,19 +78,17 @@ UserManager::iterator UserManager::find(const int& sockfd) {
 	return end();
 }
 
-void UserManager::broadcast(const char* s) {
-	broadcast(s, strlen(s));
-}
-
-void UserManager::broadcast(const char* s, const int& length) {
+void UserManager::broadcast(const char* s, const int& length) const {
 	write(1, s, length);
 	for(auto& user: *this) {
-		if (user) {
-			write(user.sockfd, s, length);
-		}
+		user.send(s, length);
 	}
 }
 
-void UserManager::broadcast(const string& s) {
+void UserManager::broadcast(const char* s) const {
+	broadcast(s, strlen(s));
+}
+
+void UserManager::broadcast(const string& s) const {
 	broadcast(s.c_str(), s.length());
 }
