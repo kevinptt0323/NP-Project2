@@ -18,7 +18,7 @@ struct FILENO {
 class Args : public unordered_map<string,void*> {
 public:
 	template<typename T>
-	const T& get(const string& key) const {
+	T& get(const string& key) const {
 		const auto& itr = find(key);
 		return *static_cast<T*>(itr->second);
 	}

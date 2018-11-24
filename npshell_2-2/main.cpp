@@ -130,16 +130,27 @@ int bin_who(
 	stringstream ss;
 	ss << "<ID>\t<nickname>\t<IP/port>\t<indicate me>\n";
 	int idx = 0;
-	const User& user_me = args.get<User>("user");
+	const User& me = args.get<User>("user");
 	for(const auto& user: user_manager) {
 		++idx;
 		if (user) {
-			string indicate_me = user_me == user ? "<-me" : "";
+			string indicate_me = user == me ? "<-me" : "";
 			ss << idx << "\t" << user.nickname << "\t" << user.addr << "\t" << indicate_me << "\n";
 		}
 	}
 	string s = ss.str();
 	write(args.get<FILENO>("fileno").OUT, s.c_str(), s.length());
+	return 0;
+}
+
+int bin_name(
+	UNUSED(const char *name),
+	UNUSED(const char *const argv[]),
+	UNUSED(const char *opts),
+	const Args& args
+) {
+	User& me = args.get<User>("user");
+	me.nickname = argv[1];
 	return 0;
 }
 
@@ -151,14 +162,13 @@ int main(int argc, char* argv[]) {
 	init_builtins();
 
 	add_builtin("who", bin_who, "");
+	add_builtin("name", bin_name, "");
 
 	int max_fd = sockfd;
 	fd_set master, read_fds;
 	FD_ZERO(&master);
 	FD_ZERO(&read_fds);
 	FD_SET(sockfd, &master);
-
-	printf("%d\n", max_fd);
 
 	extern bool exit_flag;
 	exit_flag = false;
