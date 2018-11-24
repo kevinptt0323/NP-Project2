@@ -30,7 +30,7 @@ public:
 	void set_stdin_fileno(int);
 	void set_stdout_fileno(int);
 	void set_stderr_fileno(int);
-	int exec();
+	int exec(Args=Args());
 };
 
 #endif

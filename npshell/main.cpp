@@ -1,3 +1,6 @@
+#define __NPSHELL_MAJOR__ 1
+#define __NPSHELL_MINOR__ 1
+
 #include <cstdio>
 #include <cstring>
 

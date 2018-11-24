@@ -113,7 +113,7 @@ pid_t create_process(const command& argv0, int IN_FILENO, int OUT_FILENO, int ER
 	return 0;
 }
 
-int job::exec() {
+int job::exec(Args args) {
 	if (size() == 0) return 1;
 	vector<Fd2> pipes(size()-1);
 
@@ -140,7 +140,10 @@ int job::exec() {
 		Fd2 pipe_err_i = i == size()-1 && pipe_next_err ? pipe_out_i : pipe_err;
 		const auto &argv = operator[](i);
 		if (builtins.find(argv[0]) != builtins.end()) {
-			builtins[argv[0]].exec(argv, {IN_FILENO, OUT_FILENO, ERR_FILENO});
+			args["fileno"] = new FILENO({IN_FILENO, OUT_FILENO, ERR_FILENO});
+			builtins[argv[0]].exec(argv, args);
+			delete static_cast<FILENO*>(args["fileno"]);
+			args.erase("fileno");
 			pid_t pid = 0;
 			pids.emplace_back(pid);
 		} else {
