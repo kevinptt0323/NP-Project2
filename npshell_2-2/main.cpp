@@ -123,10 +123,9 @@ int bin_who(
 	UNUSED(const char *opts),
 	const Args& args
 ) {
-	stringstream ss;
-	ss << "<ID>\t<nickname>\t<IP/port>\t<indicate me>\n";
-	int idx = 0;
 	const User& me = args.get<User>("user");
+	stringstream ss("<ID>\t<nickname>\t<IP/port>\t<indicate me>\n");
+	int idx = 0;
 	for(const auto& user: user_manager) {
 		++idx;
 		if (user) {
@@ -134,8 +133,7 @@ int bin_who(
 			ss << idx << "\t" << user.nickname << "\t" << user.addr << "\t" << indicate_me << "\n";
 		}
 	}
-	string s = ss.str();
-	write(args.get<FILENO>("fileno").OUT, s.c_str(), s.length());
+	me.send(ss.str());
 	return 0;
 }
 
@@ -145,7 +143,7 @@ int bin_tell(
 	const char *opts,
 	const Args& args
 ) {
-	User& me = args.get<User>("user");
+	const User& me = args.get<User>("user");
 	char* raw = args.get<char[]>("raw");
 	char* message;
 	bool yell = strcmp(opts, "broadcast") == 0;
@@ -158,9 +156,18 @@ int bin_tell(
 			break;
 		}
 	}
-	stringstream ss;
-	ss << "*** " << me.nickname << " " << (yell ? "yelled" : "told you") << "***: " << message << endl;
-	user_manager.broadcast(ss.str());
+	string s = "*** " + me.nickname + " " + (yell ? "yelled" : "told you") + " ***: " + message + "\n";
+	if (yell) {
+		user_manager.broadcast(s);
+	} else {
+		int user_id = atoi(argv[1]) - 1;
+		if ((int)user_manager.size() <= user_id || !user_manager[user_id]) {
+			string error_s = string("*** Error: user #") + argv[1] + " does not exist yet. ***\n";
+			me.send(error_s);
+		} else {
+			user_manager[user_id].send(s);
+		}
+	}
 	return 0;
 }
 
@@ -171,8 +178,15 @@ int bin_name(
 	const Args& args
 ) {
 	User& me = args.get<User>("user");
-	me.nickname = argv[1];
 	stringstream ss;
+	for(const auto& user: user_manager) {
+		if (user && user.nickname == argv[1]) {
+			ss << "*** User '" << argv[1] << "' already exists. ***" << endl;
+			me.send(ss.str());
+			return 1;
+		}
+	}
+	me.nickname = argv[1];
 	ss << "*** User from " << me.addr << " is named '" << me.nickname << "'. ***" << endl;
 	user_manager.broadcast(ss.str());
 	return 0;
@@ -213,7 +227,7 @@ int main(int argc, char* argv[]) {
 					max_fd = max(max_fd, client_sockfd);
 					const User& user = user_manager.login(client_addr, client_sockfd);
 					stringstream ss;
-					ss << "*** User '" << user.nickname << "' entered from " << user.addr << " ***" << endl;
+					ss << "*** User '" << user.nickname << "' entered from " << user.addr << ". ***" << endl;
 					user_manager.broadcast(ss.str());
 					print_prompt(client_sockfd, prompt);
 				} else {
@@ -255,9 +269,8 @@ int main(int argc, char* argv[]) {
 						string nickname = user->nickname;
 						user_manager.logout(user);
 						close(client_sockfd);
-						stringstream ss;
-						ss << "*** User '" << nickname << "' left. ***" << endl;
-						user_manager.broadcast(ss.str());
+						string s = "*** User '" + nickname + "' left. ***\n";
+						user_manager.broadcast(s);
 						FD_CLR(client_sockfd, &master);
 						exit_flag = false;
 					} else {
