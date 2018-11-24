@@ -34,11 +34,14 @@ class UserManager : public vector<User> {
 public:
 	using iterator = std::vector<User>::iterator;
 	using const_iterator = std::vector<User>::const_iterator;
-	void login(const sockaddr_in&, const int&, const string& =DEFAULT_NICKNAME);
-	void login(const User&);
+	User& login(const sockaddr_in&, const int&, const string& =DEFAULT_NICKNAME);
+	User& login(const User&);
 	void logout(const int&);
 	void logout(const iterator&);
 	UserManager::iterator find(const int&);
+	void broadcast(const char*);
+	void broadcast(const char*, const int&);
+	void broadcast(const string&);
 };
 
 #endif

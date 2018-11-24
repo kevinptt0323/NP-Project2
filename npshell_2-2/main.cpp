@@ -151,6 +151,9 @@ int bin_name(
 ) {
 	User& me = args.get<User>("user");
 	me.nickname = argv[1];
+	stringstream ss;
+	ss << "*** User from " << me.addr << " is named '" << me.nickname << "'. ***" << endl;
+	user_manager.broadcast(ss.str());
 	return 0;
 }
 
@@ -185,7 +188,10 @@ int main(int argc, char* argv[]) {
 					int client_sockfd = accept(sockfd, (sockaddr*) &client_addr, &addrlen);
 					FD_SET(client_sockfd, &master);
 					max_fd = max(max_fd, client_sockfd);
-					user_manager.login(client_addr, client_sockfd);
+					const User& user = user_manager.login(client_addr, client_sockfd);
+					stringstream ss;
+					ss << "*** User '" << user.nickname << "' entered from " << user.addr << " ***" << endl;
+					user_manager.broadcast(ss.str());
 					print_prompt(client_sockfd, prompt);
 				} else {
 					int client_sockfd = i;

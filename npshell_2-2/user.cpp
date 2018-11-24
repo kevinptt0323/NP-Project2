@@ -24,26 +24,26 @@ ostream& operator<<(ostream& out, const sockaddr_in& addr) {
 	return out;
 }
 
-void UserManager::login(const sockaddr_in& addr, const int& sockfd, const string& nickname) {
+User& UserManager::login(const sockaddr_in& addr, const int& sockfd, const string& nickname) {
 	User user;
 	user.addr = addr;
 	user.sockfd = sockfd;
 	user.nickname = nickname;
-	login(user);
+	return login(user);
 }
 
-void UserManager::login(const User& user) {
+User& UserManager::login(const User& user) {
 	bool ok = false;
 	for(auto& user_: *this) {
 		if (!user_) {
-			user_ = move(user);
+			user_ = user;
 			ok = true;
+			return user_;
 			break;
 		}
 	}
-	if (!ok) {
-		emplace_back(user);
-	}
+	// assert(!ok);
+	return emplace_back(user);
 }
 
 void UserManager::logout(const int& i) {
@@ -62,4 +62,21 @@ UserManager::iterator UserManager::find(const int& sockfd) {
 		}
 	}
 	return end();
+}
+
+void UserManager::broadcast(const char* s) {
+	broadcast(s, strlen(s));
+}
+
+void UserManager::broadcast(const char* s, const int& length) {
+	write(1, s, length);
+	for(auto& user: *this) {
+		if (user) {
+			write(user.sockfd, s, length);
+		}
+	}
+}
+
+void UserManager::broadcast(const string& s) {
+	broadcast(s.c_str(), s.length());
 }
