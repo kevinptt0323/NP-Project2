@@ -1,3 +1,6 @@
+#define __NPSHELL_MAJOR__ 2
+#define __NPSHELL_MINOR__ 1
+
 #include <cstdio>
 #include <cstring>
 
@@ -60,7 +63,6 @@ char* input_command(int fd, char* buf, int bufsize) {
 	while (len && buf[len-1] < 32) {
 		buf[--len] = '\0';
 	}
-	fprintf(stdout, "get %d \"%s\"\n", len, buf);
 	return buf;
 }
 
@@ -116,7 +118,7 @@ int main(int argc, char* argv[]) {
 
 	while(1) {
 		sockaddr_in client_addr;
-		unsigned addrlen;
+		unsigned addrlen = sizeof(client_addr);
 		int client_sockfd = accept(sockfd, (sockaddr*) &client_addr, &addrlen);
 		char ip_address[INET_ADDRSTRLEN];
 		inet_ntop(AF_INET, &(client_addr.sin_addr), ip_address, INET_ADDRSTRLEN);
