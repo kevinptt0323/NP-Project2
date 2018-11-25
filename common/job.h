@@ -21,6 +21,7 @@ public:
 	vector<pid_t> pids;
 	pid_t pgid;
 	string cmd;
+	bool pipe_user;
 	int pipe_next_n;
 	bool pipe_next_err;
 	Fd2 pipe_in, pipe_out, pipe_err;

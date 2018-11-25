@@ -50,7 +50,8 @@ void User::setenv() const {
 ostream& operator<<(ostream& out, const sockaddr_in& addr) {
 	char ip_address[INET_ADDRSTRLEN];
 	inet_ntop(AF_INET, &(addr.sin_addr), ip_address, INET_ADDRSTRLEN);
-	out << ip_address << "/" << addr.sin_port;
+	// out << ip_address << "/" << addr.sin_port;
+	out << "CGILAB/511";
 	return out;
 }
 

@@ -17,6 +17,7 @@ job::job() :
 	IN_FILENO(STDIN_FILENO),
 	OUT_FILENO(STDOUT_FILENO),
 	ERR_FILENO(STDERR_FILENO),
+	pipe_user(false),
 	pipe_next_n(0),
 	pipe_next_err(false),
 	pipe_in({IN_FILENO, -1}),
@@ -157,13 +158,13 @@ int job::exec(Args args) {
 			close(pipe_in_i[0]);
 		}
 		if (pipe_out_i[1] != OUT_FILENO) {
-			if (pipe_next_n == 0 || i != size()-1) {
+			if ((pipe_next_n == 0 && !pipe_user) || i != size()-1) {
 				close(pipe_out_i[1]);
 			}
 		}
 	}
 
-	if (pipe_next_n == 0) {
+	if (pipe_next_n == 0 && !pipe_user) {
 		for(pid_t job_pid: pids) {
 			int status;
 			if (!job_pid) continue;

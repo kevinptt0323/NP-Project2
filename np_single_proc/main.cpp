@@ -84,12 +84,23 @@ Fd2* get_user_pipe(const User& user1, const User& user2) {
 
 void set_user_pipe(const User& user1, const User& user2, const Fd2& fd) {
 	auto key = make_pair(user1.id, user2.id);
+	printf("set %d %d\n", user1.id, user2.id);
 	user_pipes[key] = fd;
 }
 
-void set_user_pipe(const User& user1, const User& user2) {
+void clear_user_pipe(const User& user1, const User& user2) {
 	auto key = make_pair(user1.id, user2.id);
+	printf("clear %d %d\n", user1.id, user2.id);
 	user_pipes.erase(key);
+}
+
+void clear_user_pipe(const User& user) {
+	for(auto itr=user_pipes.begin(); itr!=user_pipes.end(); itr++) {
+		if (itr->first.first == user.id || itr->first.second == user.id) {
+			printf("erase %d %d\n", itr->first.first, itr->first.second);
+			user_pipes.erase(itr);
+		}
+	}
 }
 
 UserManager user_manager;
@@ -107,8 +118,8 @@ int bin_who(
 	for(const auto& user: user_manager) {
 		++idx;
 		if (user) {
-			string indicate_me = user == me ? "<-me" : "";
-			ss << idx << "\t" << user.nickname << "\t" << user.addr << "\t" << indicate_me << "\n";
+			string indicate_me = user == me ? "\t<-me" : "";
+			ss << idx << "\t" << user.nickname << "\t" << user.addr << indicate_me << "\n";
 		}
 	}
 	me.send(ss.str());
@@ -183,7 +194,7 @@ int main(int argc, char* argv[]) {
 	add_builtin("yell", bin_tell, "broadcast");
 	add_builtin("name", bin_name, "");
 
-	int max_fd = 256;
+	int max_fd = sockfd;
 	fd_set master, read_fds;
 	FD_ZERO(&master);
 	FD_ZERO(&read_fds);
@@ -212,6 +223,9 @@ int main(int argc, char* argv[]) {
 					job("clearenv").exec();
 					job("setenv PATH bin:.").exec();
 					user.getenv();
+					user.send("****************************************\n"
+					"** Welcome to the information server. **\n"
+					"****************************************\n");
 					stringstream ss;
 					ss << "*** User '" << user.nickname << "' entered from " << user.addr << ". ***" << endl;
 					user_manager.broadcast(ss.str());
@@ -223,6 +237,7 @@ int main(int argc, char* argv[]) {
 					me.setenv();
 					if (input_command(client_sockfd, buf, BUF_SIZE)) {
 						if (strlen(buf) > 0) {
+							fprintf(stdout, "%d: %s\n", me.id, buf);
 							string error_s = "";
 							me.number_pipe_manager.reduce_count();
 							job curr_job(buf);
@@ -243,7 +258,14 @@ int main(int argc, char* argv[]) {
 										          " does not exist yet. ***\n";
 									} else {
 										curr_job.pipe_in = *user_pipe;
-										set_user_pipe(*pipe_user_itr, me);
+										clear_user_pipe(*pipe_user_itr, me);
+										printf("in %d %d\n", curr_job.pipe_in[0], curr_job.pipe_in[1]);
+										string s = "*** " + \
+										           me.nickname + " (#" + to_string(me.id) + \
+										           ") just received from " + \
+										           pipe_user_itr->nickname + " (#" + to_string(pipe_user_itr->id) + \
+										           ") by '" + buf + "' ***\n";
+										user_manager.broadcast(s);
 									}
 								} else {
 									error_s = "*** Error: user #" + to_string(user_pipe_in) + " does not exist yet. ***\n";
@@ -271,7 +293,14 @@ int main(int argc, char* argv[]) {
 										pipe(user_pipe->data());
 										set_user_pipe(me, *pipe_user_itr, *user_pipe);
 										curr_job.pipe_out = *user_pipe;
+										curr_job.pipe_user = true;
 										delete user_pipe;
+										string s = "*** " + \
+										           me.nickname + " (#" + to_string(me.id) + \
+										           ") just piped '" + buf + "' to " + \
+										           pipe_user_itr->nickname + " (#" + to_string(pipe_user_itr->id) + \
+										           ") ***\n";
+										user_manager.broadcast(s);
 									}
 								} else {
 									error_s = "*** Error: user #" + to_string(user_pipe_out) + " does not exist yet. ***\n";
@@ -302,11 +331,11 @@ int main(int argc, char* argv[]) {
 						job("exit").exec();
 					}
 					if (exit_flag) {
-						string nickname = me.nickname;
+						string s = "*** User '" + me.nickname + "' left. ***\n";
+						user_manager.broadcast(s);
+						clear_user_pipe(me);
 						user_manager.logout(me_itr);
 						close(client_sockfd);
-						string s = "*** User '" + nickname + "' left. ***\n";
-						user_manager.broadcast(s);
 						FD_CLR(client_sockfd, &master);
 						exit_flag = false;
 					} else {
