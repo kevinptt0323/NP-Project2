@@ -63,20 +63,20 @@ pid_t create_process(const command& argv0, int IN_FILENO, int OUT_FILENO, int ER
 		usleep(100);
 	}
 	if (pid == 0) {
-		if (argv0.redirect_in != "") {
-			int fd = open(argv0.redirect_in.c_str(), O_RDONLY);
+		if (argv0.file_in != "") {
+			int fd = open(argv0.file_in.c_str(), O_RDONLY);
 			if (fd == -1) {
-				error("%s: %s", strerror(errno), argv0.redirect_in.c_str());
+				error("%s: %s", strerror(errno), argv0.file_in.c_str());
 			}
 			dup2(fd, STDIN_FILENO);
 			close(fd);
 		} else if (in_fd != STDIN_FILENO) {
 			dup2(in_fd, STDIN_FILENO);
 		}
-		if (argv0.redirect_out != "") {
-			int fd = open(argv0.redirect_out.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+		if (argv0.file_out != "") {
+			int fd = open(argv0.file_out.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
 			if (fd == -1) {
-				error("%s: %s", strerror(errno), argv0.redirect_out.c_str());
+				error("%s: %s", strerror(errno), argv0.file_out.c_str());
 			}
 			dup2(fd, STDOUT_FILENO);
 			close(fd);

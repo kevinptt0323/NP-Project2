@@ -6,7 +6,7 @@
 
 class command : public std::vector<std::string> {
 public:
-	std::string redirect_in, redirect_out;
+	std::string file_in, file_out;
 	command();
 	command(const char*);
 	command(const std::string&);

@@ -4,7 +4,7 @@
 #include <glob.h>
 
 command::command() {
-	redirect_in = redirect_out = "";
+	file_in = file_out = "";
 }
 
 command::command(const char* _cmd) {
@@ -14,9 +14,9 @@ command::command(const char* _cmd) {
 	argv = strtok_r(cmd, " ", &ptr);
 	do {
 		if (strcmp(argv, "<") == 0)
-			redirect_in = strtok_r(NULL, " ", &ptr);
+			file_in = strtok_r(NULL, " ", &ptr);
 		else if (strcmp(argv, ">") == 0)
-			redirect_out = strtok_r(NULL, " ", &ptr);
+			file_out = strtok_r(NULL, " ", &ptr);
 		else {
 			emplace_back(argv);
 		}
