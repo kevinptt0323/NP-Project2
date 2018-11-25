@@ -1,6 +1,6 @@
 include ../common/make.common
 
-EXEC = npshell
+EXEC = np_simple
 OBJS = ${COMMON}/builtin.o \
        ${COMMON}/command.o \
        ${COMMON}/job.o \

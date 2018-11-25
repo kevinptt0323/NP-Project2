@@ -1,6 +1,6 @@
 include ../common/make.common
 
-EXEC = npshell
+EXEC = np_single_proc
 OBJS = ${COMMON}/builtin.o \
        ${COMMON}/command.o \
        ${COMMON}/job.o \
