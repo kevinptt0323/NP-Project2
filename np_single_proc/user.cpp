@@ -4,17 +4,15 @@
 
 using std::ostream;
 
-User::User() : sockfd(-1) { }
+User::User() : id(-1), sockfd(-1) { }
 
 bool User::operator==(const User& rhs) const {
-	return addr.sin_addr.s_addr == rhs.addr.sin_addr.s_addr && addr.sin_port == rhs.addr.sin_port;
-}
-bool User::operator==(const int& fd) const {
-	return sockfd == fd;
+	return id == rhs.id;
+	// return addr.sin_addr.s_addr == rhs.addr.sin_addr.s_addr && addr.sin_port == rhs.addr.sin_port;
 }
 
 User::operator bool() const {
-	return sockfd != -1;
+	return id != -1;
 }
 
 void User::send(const char* s, const int& length) const {
@@ -47,17 +45,19 @@ User& UserManager::login(const sockaddr_in& addr, const int& sockfd, const strin
 }
 
 User& UserManager::login(const User& user) {
-	bool ok = false;
-	for(auto& user_: *this) {
+	int idx = 0;
+	for(User& user_: *this) {
+		idx++;
 		if (!user_) {
 			user_ = user;
-			ok = true;
+			user_.id = idx;
 			return user_;
 			break;
 		}
 	}
-	// assert(!ok);
-	return emplace_back(user);
+	User& user_ = emplace_back(user);
+	user_.id = idx;
+	return user_;
 }
 
 void UserManager::logout(const int& i) {
@@ -66,6 +66,7 @@ void UserManager::logout(const int& i) {
 
 void UserManager::logout(const iterator& itr) {
 	itr->number_pipe_manager.close();
+	itr->id = -1;
 	itr->sockfd = -1;
 }
 

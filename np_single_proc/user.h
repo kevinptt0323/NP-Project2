@@ -17,6 +17,7 @@ using std::ostream;
 
 class User {
 public:
+	int id;
 	sockaddr_in addr;
 	int sockfd;
 	string nickname;
@@ -24,7 +25,6 @@ public:
 
 	User();
 	bool operator==(const User&) const;
-	bool operator==(const int&) const;
 	operator bool() const;
 	void send(const char*, const int&) const;
 	void send(const char*) const;
