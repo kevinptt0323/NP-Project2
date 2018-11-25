@@ -208,16 +208,19 @@ int main(int argc, char* argv[]) {
 					int client_sockfd = accept(sockfd, (sockaddr*) &client_addr, &addrlen);
 					FD_SET(client_sockfd, &master);
 					max_fd = max(max_fd, client_sockfd);
-					const User& user = user_manager.login(client_addr, client_sockfd);
+					User& user = user_manager.login(client_addr, client_sockfd);
+					job("clearenv").exec();
+					job("setenv PATH bin:.").exec();
+					user.getenv();
 					stringstream ss;
 					ss << "*** User '" << user.nickname << "' entered from " << user.addr << ". ***" << endl;
 					user_manager.broadcast(ss.str());
-					// job("setenv PATH bin:.").exec();
 					print_prompt(client_sockfd, prompt);
 				} else {
 					int client_sockfd = i;
 					auto me_itr = user_manager.find_by_sockfd(client_sockfd);
 					auto& me = *me_itr;
+					me.setenv();
 					if (input_command(client_sockfd, buf, BUF_SIZE)) {
 						if (strlen(buf) > 0) {
 							string error_s = "";
@@ -307,6 +310,7 @@ int main(int argc, char* argv[]) {
 						FD_CLR(client_sockfd, &master);
 						exit_flag = false;
 					} else {
+						me.getenv();
 						print_prompt(client_sockfd, prompt);
 					}
 				}

@@ -16,6 +16,7 @@ using std::vector;
 using std::ostream;
 
 class User {
+	vector<pair<string,string>> environ;
 public:
 	int id;
 	sockaddr_in addr;
@@ -29,6 +30,8 @@ public:
 	void send(const char*, const int&) const;
 	void send(const char*) const;
 	void send(const string&) const;
+	void getenv();
+	void setenv() const;
 };
 
 ostream& operator<<(ostream&, const sockaddr_in&);

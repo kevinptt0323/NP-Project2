@@ -2,6 +2,7 @@
 #include <unordered_map>
 #include <vector>
 #include <signal.h>
+#include <unistd.h>
 
 #include "builtin.h"
 #include "utils.h"
@@ -71,16 +72,20 @@ int bin_printenv(
 	const Args& args
 ) {
 	const char* key = argv[1];
-	if (key == NULL) {
-		return -1;
-	}
-	const char* env = getenv(key);
-	if (env == NULL) {
-		return -1;
-	}
 	const FILENO& fileno = args.get<FILENO>("fileno");
-	write(fileno.OUT, env, strlen(env));
-	write(fileno.OUT, "\n", 1);
+	if (key == NULL) {
+		for(char** ptr = environ; *ptr; ptr++) {
+			write(fileno.OUT, *ptr, strlen(*ptr));
+			write(fileno.OUT, "\n", 1);
+		}
+	} else {
+		const char* env = getenv(key);
+		if (env == NULL) {
+			return -1;
+		}
+		write(fileno.OUT, env, strlen(env));
+		write(fileno.OUT, "\n", 1);
+	}
 	return 0;
 }
 
@@ -94,10 +99,19 @@ int bin_unsetenv(
 	return unsetenv(key);
 }
 
+int bin_clearenv(
+	UNUSED(const char *name),
+	UNUSED(const char *const argv[]),
+	UNUSED(const char *opts),
+	UNUSED(const Args& args)
+) {
+	return clearenv(); }
+
 void init_builtins() {
 	add_builtin("exit", bin_break, "");
 	add_builtin("setenv", bin_setenv, "");
 	add_builtin("printenv", bin_printenv, "");
 	add_builtin("unsetenv", bin_unsetenv, "");
+	add_builtin("clearenv", bin_clearenv, "");
 }
 

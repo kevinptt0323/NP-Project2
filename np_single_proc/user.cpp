@@ -29,6 +29,24 @@ void User::send(const string& s) const {
 	send(s.c_str(), s.length());
 }
 
+void User::getenv() {
+	environ.clear();
+	for(char** ptr = ::environ; *ptr; ptr++) {
+		string env = *ptr;
+		auto pos = env.find("=");
+		string key = env.substr(0, pos);
+		string val = env.substr(pos + 1);
+		environ.emplace_back(key, val);
+	}
+}
+
+void User::setenv() const {
+	clearenv();
+	for(const auto& env: environ) {
+		::setenv(env.first.c_str(), env.second.c_str(), 1);
+	}
+}
+
 ostream& operator<<(ostream& out, const sockaddr_in& addr) {
 	char ip_address[INET_ADDRSTRLEN];
 	inet_ntop(AF_INET, &(addr.sin_addr), ip_address, INET_ADDRSTRLEN);
