@@ -56,7 +56,7 @@ User& UserManager::login(const User& user) {
 		}
 	}
 	User& user_ = emplace_back(user);
-	user_.id = idx;
+	user_.id = idx + 1;
 	return user_;
 }
 
@@ -65,12 +65,21 @@ void UserManager::logout(const int& i) {
 }
 
 void UserManager::logout(const iterator& itr) {
+	printf("logout %lu\n", itr->number_pipe_manager.size());
 	itr->number_pipe_manager.close();
 	itr->id = -1;
 	itr->sockfd = -1;
 }
 
-UserManager::iterator UserManager::find(const int& sockfd) {
+UserManager::iterator UserManager::find_by_id(const int& id) {
+	if ((int)size() >= id && this->operator[](id-1)) {
+		return begin() + id - 1;
+	} else {
+		return end();
+	}
+}
+
+UserManager::iterator UserManager::find_by_sockfd(const int& sockfd) {
 	for(UserManager::iterator itr=begin(); itr!=end(); itr++) {
 		if (itr->sockfd == sockfd) {
 			return itr;

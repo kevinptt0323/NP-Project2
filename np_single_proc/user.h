@@ -41,7 +41,8 @@ public:
 	User& login(const User&);
 	void logout(const int&);
 	void logout(const iterator&);
-	UserManager::iterator find(const int&);
+	UserManager::iterator find_by_id(const int&);
+	UserManager::iterator find_by_sockfd(const int&);
 	void broadcast(const char*, const int&) const;
 	void broadcast(const char*) const;
 	void broadcast(const string&) const;
