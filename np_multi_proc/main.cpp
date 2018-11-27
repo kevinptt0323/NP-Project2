@@ -83,18 +83,21 @@ Fd2* get_user_pipe(const User& user1, const User& user2) {
 }
 
 void set_user_pipe(const User& user1, const User& user2, const Fd2& fd) {
+	return;
 	auto key = make_pair(user1.id, user2.id);
 	printf("set %d %d\n", user1.id, user2.id);
 	user_pipes[key] = fd;
 }
 
 void clear_user_pipe(const User& user1, const User& user2) {
+	return;
 	auto key = make_pair(user1.id, user2.id);
 	printf("clear %d %d\n", user1.id, user2.id);
 	user_pipes.erase(key);
 }
 
 void clear_user_pipe(const User& user) {
+	return;
 	for(auto itr=user_pipes.begin(); itr!=user_pipes.end(); itr++) {
 		if (itr->first.first == user.id || itr->first.second == user.id) {
 			printf("erase %d %d\n", itr->first.first, itr->first.second);
@@ -168,24 +171,227 @@ int bin_name(
 	const Args& args
 ) {
 	User& me = args.get<User>("user");
-	stringstream ss;
 	for(const auto& user: user_manager) {
 		if (user && user.nickname == argv[1]) {
-			ss << "*** User '" << argv[1] << "' already exists. ***" << endl;
-			me.send(ss.str());
+			me.send("*** User '"s + argv[1] + "' already exists. ***\n");
 			return 1;
 		}
 	}
 	me.nickname = argv[1];
+	stringstream ss;
 	ss << "*** User from " << me.addr << " is named '" << me.nickname << "'. ***" << endl;
-	user_manager.broadcast(ss.str());
+	me.send(ss.str());
+	me.parent->send(to_string(me.id) + " name \"" + me.nickname + "\"");
 	return 0;
+}
+
+int bin_break_2(
+	UNUSED(const char *name),
+	UNUSED(const char *const argv[]),
+	UNUSED(const char *opts),
+	const Args& args
+) {
+	User& me = args.get<User>("user");
+	if (me.parent) {
+		me.parent->send(to_string(me.id) + " exit");
+	}
+	return 0;
+}
+
+pid_t login(User& me) {
+	job("clearenv").exec();
+	job("setenv PATH bin:.").exec();
+	me.getenv();
+	me.send("****************************************\n"
+	"** Welcome to the information server. **\n"
+	"****************************************\n");
+	stringstream ss;
+	ss << "*** User '" << me.nickname << "' entered from " << me.addr << ". ***" << endl;
+	me.send(ss.str());
+
+	pid_t pid;
+	while ((pid = fork()) < 0) {
+		debug("Fork error: %s", strerror(errno));
+		usleep(100);
+	}
+	return pid;
+}
+
+void start_remote_shell(int me_id, const int& to_child) {
+	auto me_itr = user_manager.find_by_id(me_id);
+	int max_fd = max(me_itr->sockfd, to_child);
+	fd_set master, read_fds;
+	FD_ZERO(&master);
+	FD_ZERO(&read_fds);
+	FD_SET(me_itr->sockfd, &master);
+	FD_SET(to_child, &master);
+
+	extern bool exit_flag;
+	exit_flag = false;
+
+	print_prompt(me_itr->sockfd, prompt);
+
+	while (!exit_flag) {
+		read_fds = master;
+		if (select(max_fd+1, &read_fds, NULL, NULL, NULL) == -1) {
+			if (errno == EINTR) {
+				continue;
+			}
+			error("select error");
+		}
+		int curr_fd = -1;
+		for(int i=0; i<=max_fd; i++) {
+			if (FD_ISSET(i, &read_fds)) {
+				curr_fd = i;
+				break;
+			}
+		}
+		User& me = *me_itr;
+		if (curr_fd == me.sockfd) {
+			me.setenv();
+			if (input_command(me.sockfd, buf, BUF_SIZE)) {
+				if (strlen(buf) > 0) {
+					fprintf(stderr, "child: %d: %s\n", me.id, buf);
+					string error_s = "";
+					me.number_pipe_manager.reduce_count();
+					job curr_job(buf);
+					curr_job.set_stdin_fileno(me.sockfd);
+					curr_job.set_stdout_fileno(me.sockfd);
+					curr_job.set_stderr_fileno(me.sockfd);
+					int user_pipe_in = curr_job.front().user_pipe_in;
+					int user_pipe_out = curr_job.back().user_pipe_out;
+					if (~user_pipe_in) {
+						auto pipe_user_itr = user_manager.find_by_id(user_pipe_in);
+						if (pipe_user_itr != user_manager.end()) {
+							Fd2* user_pipe = get_user_pipe(*pipe_user_itr, me);
+							if (!user_pipe) {
+								error_s = "*** Error: the pipe #" + \
+											to_string(pipe_user_itr->id) + \
+											"->#" + \
+											to_string(me.id) + \
+											" does not exist yet. ***\n";
+							} else {
+								curr_job.pipe_in = *user_pipe;
+								clear_user_pipe(*pipe_user_itr, me);
+								string s = "*** " + \
+											me.nickname + " (#" + to_string(me.id) + \
+											") just received from " + \
+											pipe_user_itr->nickname + " (#" + to_string(pipe_user_itr->id) + \
+											") by '" + buf + "' ***\n";
+								user_manager.broadcast(s);
+							}
+						} else {
+							error_s = "*** Error: user #" + to_string(user_pipe_in) + " does not exist yet. ***\n";
+						}
+					} else {
+						const Fd2 *pipe_in = me.number_pipe_manager.get_fd2(0);
+						if (pipe_in) {
+							curr_job.pipe_in = *pipe_in;
+							me.number_pipe_manager.pop_front();
+						}
+					}
+					bool same_pipe_next_n = false;
+					if (~user_pipe_out) {
+						auto pipe_user_itr = user_manager.find_by_id(user_pipe_out);
+						if (pipe_user_itr != user_manager.end()) {
+							Fd2 *user_pipe = get_user_pipe(me, *pipe_user_itr);
+							if (user_pipe) {
+								error_s = "*** Error: the pipe #" + \
+											to_string(me.id) + \
+											"->#" + \
+											to_string(pipe_user_itr->id) + \
+											" already exists. ***\n";
+							} else {
+								user_pipe = new Fd2();
+								pipe(user_pipe->data());
+								set_user_pipe(me, *pipe_user_itr, *user_pipe);
+								curr_job.pipe_out = *user_pipe;
+								curr_job.pipe_user = true;
+								delete user_pipe;
+								string s = "*** " + \
+											me.nickname + " (#" + to_string(me.id) + \
+											") just piped '" + buf + "' to " + \
+											pipe_user_itr->nickname + " (#" + to_string(pipe_user_itr->id) + \
+											") ***\n";
+								user_manager.broadcast(s);
+							}
+						} else {
+							error_s = "*** Error: user #" + to_string(user_pipe_out) + " does not exist yet. ***\n";
+						}
+					} else {
+						if (curr_job.pipe_next_n > 0) {
+							const Fd2 *pipe_out = me.number_pipe_manager.get_fd2(curr_job.pipe_next_n);
+							if (pipe_out) {
+								same_pipe_next_n = true;
+								curr_job.pipe_out = *pipe_out;
+							}
+						}
+					}
+					Args args;
+					args["fileno"] = new FILENO(DEFAULT_FILENO);
+					args["user"] = &me;
+					args["raw"] = &buf;
+					if (error_s == "") {
+						curr_job.exec(args);
+					} else {
+						me.send(error_s);
+					}
+					if (curr_job.pipe_next_n > 0 && !same_pipe_next_n) {
+						me.number_pipe_manager.set_fd2(curr_job.pipe_next_n, curr_job.pipe_out);
+					}
+				}
+			} else {
+				job("exit").exec();
+			}
+			me.getenv();
+			print_prompt(me.sockfd, prompt);
+		} else if (curr_fd == to_child) {
+			if (input_command(curr_fd, buf, BUF_SIZE)) {
+				fprintf(stderr, "parent->%d: %s\n", me.id, buf);
+				int user_id;
+				char cmd[1024];
+				sscanf(buf, "%d %s", &user_id, cmd);
+				auto user_itr = user_manager.find_by_id(user_id);
+				if (strcmp(cmd, "login") == 0) {
+					if (user_id != me.id) {
+						char nickname[33];
+						User user;
+						user.id = user_id;
+						sscanf(buf, "%*d %*s %d \"%32[^\"]\" %u %hu", &user.sockfd, nickname, &user.addr.sin_addr.s_addr, &user.addr.sin_port);
+						user.nickname = nickname;
+						user_manager.login(user);
+						me_itr = user_manager.find_by_id(me_id);
+						stringstream ss;
+						ss << "*** User '" << user.nickname << "' entered from " << user.addr << ". ***" << endl;
+						me_itr->send(ss.str());
+					}
+				} else if (strcmp(cmd, "name") == 0) {
+					char nickname[33];
+					sscanf(buf, "%*d %*s \"%32[^\"]\"", nickname);
+					printf("%d\n", *user_itr != me);
+					if (*user_itr != me) {
+						user_itr->nickname = nickname;
+						stringstream ss;
+						ss << "*** User from " << user_itr->addr << " is named '" << user_itr->nickname << "'. ***" << endl;
+						me.send(ss.str());
+					}
+				} else if (strcmp(cmd, "exit") == 0) {
+					if (me == *user_itr) {
+						exit_flag = true;
+					}
+					user_manager.logout(user_itr);
+					me_itr->send("*** User '" + user_itr->nickname + "' left. ***\n");
+				}
+			}
+		} else {
+		}
+	}
 }
 
 int main(int argc, char* argv[]) {
 	int port = 8787;
 	if (argc == 2) port = atoi(argv[1]);
-	int sockfd = start_tcp_server(port);
+	int server_sockfd = start_tcp_server(port);
 	init_signal_handler();
 	init_builtins();
 
@@ -193,15 +399,13 @@ int main(int argc, char* argv[]) {
 	add_builtin("tell", bin_tell, "");
 	add_builtin("yell", bin_tell, "broadcast");
 	add_builtin("name", bin_name, "");
+	add_builtin("exit", bin_break_2, "");
 
-	int max_fd = sockfd;
+	int max_fd = server_sockfd;
 	fd_set master, read_fds;
 	FD_ZERO(&master);
 	FD_ZERO(&read_fds);
-	FD_SET(sockfd, &master);
-
-	extern bool exit_flag;
-	exit_flag = false;
+	FD_SET(server_sockfd, &master);
 
 	while(1) {
 		read_fds = master;
@@ -211,136 +415,78 @@ int main(int argc, char* argv[]) {
 			}
 			error("select error");
 		}
+		int curr_fd = -1;
 		for(int i=0; i<=max_fd; i++) {
 			if (FD_ISSET(i, &read_fds)) {
-				if (i == sockfd) {
-					sockaddr_in client_addr;
-					unsigned addrlen = sizeof(client_addr);
-					int client_sockfd = accept(sockfd, (sockaddr*) &client_addr, &addrlen);
-					FD_SET(client_sockfd, &master);
-					max_fd = max(max_fd, client_sockfd);
-					User& user = user_manager.login(client_addr, client_sockfd);
-					job("clearenv").exec();
-					job("setenv PATH bin:.").exec();
-					user.getenv();
-					user.send("****************************************\n"
-					"** Welcome to the information server. **\n"
-					"****************************************\n");
-					stringstream ss;
-					ss << "*** User '" << user.nickname << "' entered from " << user.addr << ". ***" << endl;
-					user_manager.broadcast(ss.str());
-					print_prompt(client_sockfd, prompt);
+				curr_fd = i;
+				break;
+			}
+		}
+		if (curr_fd == server_sockfd) {
+			sockaddr_in client_addr;
+			unsigned addrlen = sizeof(client_addr);
+			int client_sockfd = accept(server_sockfd, (sockaddr*) &client_addr, &addrlen);
+			User& me = user_manager.login(client_addr, client_sockfd);
+			Fd2 to_parent, to_child;
+			pipe(to_parent.data());
+			pipe(to_child.data());
+			pid_t child_pid = login(me);
+			if (child_pid < 0) {
+				error("login error");
+			} else if (child_pid != 0) {
+				fprintf(stderr, "parent: child_pid = %d\n", child_pid);
+				close(me.sockfd);
+
+				fprintf(stderr, "%d : [%d %d] [%d %d]\n", me.id, to_parent[0], to_parent[1], to_child[0], to_child[1]);
+
+				FD_SET(to_parent[0], &master);
+				max_fd = max(max_fd, to_parent[0]);
+				me.sockfd = to_child[1];
+				close(to_child[0]);
+				close(to_parent[1]);
+				stringstream ss;
+				ss << me.id << " login " << me.sockfd << " \"" << me.nickname << "\" " << me.addr.sin_addr.s_addr << " " << me.addr.sin_port;
+				user_manager.broadcast(ss.str());
+			} else {
+				char ip_address[INET_ADDRSTRLEN];
+				inet_ntop(AF_INET, &(client_addr.sin_addr), ip_address, INET_ADDRSTRLEN);
+				fprintf(stderr, "child: connected from %s:%u\n", ip_address, client_addr.sin_port);
+				// me.in_child = true;
+				me.parent = new User();
+				me.parent->id = 0;
+				me.parent->sockfd = to_parent[1];
+				start_remote_shell(me.id, to_child[0]);
+				// string s = "*** User '" + me.nickname + "' left. ***\n";
+				User& me = user_manager[client_sockfd];
+				clear_user_pipe(me);
+				close(me.parent->sockfd);
+				FD_CLR(me.parent->sockfd, &master);
+				delete me.parent;
+				close(to_child[0]);
+				close(me.sockfd);
+				auto me_itr = user_manager.find_by_sockfd(me.sockfd);
+				user_manager.logout(me_itr);
+				break;
+			}
+		} else {
+			if (input_command(curr_fd, buf, BUF_SIZE)) {
+				int user_id;
+				char cmd[1024];
+				sscanf(buf, "%d %s", &user_id, cmd);
+				auto user_itr = user_manager.find_by_id(user_id);
+				if (user_itr == user_manager.end()) {
+					error("???");
 				} else {
-					int client_sockfd = i;
-					auto me_itr = user_manager.find_by_sockfd(client_sockfd);
-					auto& me = *me_itr;
-					me.setenv();
-					if (input_command(client_sockfd, buf, BUF_SIZE)) {
-						if (strlen(buf) > 0) {
-							fprintf(stdout, "%d: %s\n", me.id, buf);
-							string error_s = "";
-							me.number_pipe_manager.reduce_count();
-							job curr_job(buf);
-							curr_job.set_stdin_fileno(client_sockfd);
-							curr_job.set_stdout_fileno(client_sockfd);
-							curr_job.set_stderr_fileno(client_sockfd);
-							int user_pipe_in = curr_job.front().user_pipe_in;
-							int user_pipe_out = curr_job.back().user_pipe_out;
-							if (~user_pipe_in) {
-								auto pipe_user_itr = user_manager.find_by_id(user_pipe_in);
-								if (pipe_user_itr != user_manager.end()) {
-									Fd2* user_pipe = get_user_pipe(*pipe_user_itr, me);
-									if (!user_pipe) {
-										error_s = "*** Error: the pipe #" + \
-										          to_string(pipe_user_itr->id) + \
-										          "->#" + \
-										          to_string(me.id) + \
-										          " does not exist yet. ***\n";
-									} else {
-										curr_job.pipe_in = *user_pipe;
-										clear_user_pipe(*pipe_user_itr, me);
-										printf("in %d %d\n", curr_job.pipe_in[0], curr_job.pipe_in[1]);
-										string s = "*** " + \
-										           me.nickname + " (#" + to_string(me.id) + \
-										           ") just received from " + \
-										           pipe_user_itr->nickname + " (#" + to_string(pipe_user_itr->id) + \
-										           ") by '" + buf + "' ***\n";
-										user_manager.broadcast(s);
-									}
-								} else {
-									error_s = "*** Error: user #" + to_string(user_pipe_in) + " does not exist yet. ***\n";
-								}
-							} else {
-								const Fd2 *pipe_in = me.number_pipe_manager.get_fd2(0);
-								if (pipe_in) {
-									curr_job.pipe_in = *pipe_in;
-									me.number_pipe_manager.pop_front();
-								}
-							}
-							bool same_pipe_next_n = false;
-							if (~user_pipe_out) {
-								auto pipe_user_itr = user_manager.find_by_id(user_pipe_out);
-								if (pipe_user_itr != user_manager.end()) {
-									Fd2 *user_pipe = get_user_pipe(me, *pipe_user_itr);
-									if (user_pipe) {
-										error_s = "*** Error: the pipe #" + \
-										          to_string(me.id) + \
-										          "->#" + \
-										          to_string(pipe_user_itr->id) + \
-										          " already exists. ***\n";
-									} else {
-										user_pipe = new Fd2();
-										pipe(user_pipe->data());
-										set_user_pipe(me, *pipe_user_itr, *user_pipe);
-										curr_job.pipe_out = *user_pipe;
-										curr_job.pipe_user = true;
-										delete user_pipe;
-										string s = "*** " + \
-										           me.nickname + " (#" + to_string(me.id) + \
-										           ") just piped '" + buf + "' to " + \
-										           pipe_user_itr->nickname + " (#" + to_string(pipe_user_itr->id) + \
-										           ") ***\n";
-										user_manager.broadcast(s);
-									}
-								} else {
-									error_s = "*** Error: user #" + to_string(user_pipe_out) + " does not exist yet. ***\n";
-								}
-							} else {
-								if (curr_job.pipe_next_n > 0) {
-									const Fd2 *pipe_out = me.number_pipe_manager.get_fd2(curr_job.pipe_next_n);
-									if (pipe_out) {
-										same_pipe_next_n = true;
-										curr_job.pipe_out = *pipe_out;
-									}
-								}
-							}
-							Args args;
-							args["fileno"] = new FILENO(DEFAULT_FILENO);
-							args["user"] = &me;
-							args["raw"] = &buf;
-							if (error_s == "") {
-								curr_job.exec(args);
-							} else {
-								me.send(error_s);
-							}
-							if (curr_job.pipe_next_n > 0 && !same_pipe_next_n) {
-								me.number_pipe_manager.set_fd2(curr_job.pipe_next_n, curr_job.pipe_out);
-							}
-						}
-					} else {
-						job("exit").exec();
-					}
-					if (exit_flag) {
-						string s = "*** User '" + me.nickname + "' left. ***\n";
-						user_manager.broadcast(s);
-						clear_user_pipe(me);
-						user_manager.logout(me_itr);
-						close(client_sockfd);
-						FD_CLR(client_sockfd, &master);
-						exit_flag = false;
-					} else {
-						me.getenv();
-						print_prompt(client_sockfd, prompt);
+					user_manager.broadcast(buf);
+					if (strcmp(cmd, "name") == 0) {
+						char nickname[33];
+						sscanf(buf, "%*d %*s \"%32[^\"]\"", nickname);
+						user_itr->nickname = nickname;
+					} else if (strcmp(cmd, "exit") == 0) {
+						close(user_itr->sockfd);
+						user_manager.logout(user_itr);
+						close(curr_fd);
+						FD_CLR(curr_fd, &master);
 					}
 				}
 			}

@@ -4,11 +4,15 @@
 
 using std::ostream;
 
-User::User() : id(-1), sockfd(-1) { }
+User::User() : id(-1), sockfd(-1), parent(NULL) { }
 
 bool User::operator==(const User& rhs) const {
 	return id == rhs.id;
 	// return addr.sin_addr.s_addr == rhs.addr.sin_addr.s_addr && addr.sin_port == rhs.addr.sin_port;
+}
+
+bool User::operator!=(const User& rhs) const {
+	return !(*this == rhs);
 }
 
 User::operator bool() const {
@@ -50,8 +54,8 @@ void User::setenv() const {
 ostream& operator<<(ostream& out, const sockaddr_in& addr) {
 	char ip_address[INET_ADDRSTRLEN];
 	inet_ntop(AF_INET, &(addr.sin_addr), ip_address, INET_ADDRSTRLEN);
-	// out << ip_address << "/" << addr.sin_port;
-	out << "CGILAB/511";
+	out << ip_address << "/" << addr.sin_port;
+	// out << "CGILAB/511";
 	return out;
 }
 
@@ -64,6 +68,17 @@ User& UserManager::login(const sockaddr_in& addr, const int& sockfd, const strin
 }
 
 User& UserManager::login(const User& user) {
+	if (user.id != -1) {
+		if (find_by_id(user.id) != end()) {
+			// fprintf(stderr, "login failed\n");
+		} else {
+			if ((int)size() < user.id) {
+				resize(user.id);
+			}
+			this->operator[](user.id-1) = user;
+		}
+		return this->operator[](user.id-1);
+	}
 	int idx = 0;
 	for(User& user_: *this) {
 		idx++;
@@ -84,7 +99,7 @@ void UserManager::logout(const int& i) {
 }
 
 void UserManager::logout(const iterator& itr) {
-	printf("logout %lu\n", itr->number_pipe_manager.size());
+	fprintf(stderr, "logout %lu\n", itr->number_pipe_manager.size());
 	itr->number_pipe_manager.close();
 	itr->id = -1;
 	itr->sockfd = -1;
@@ -108,7 +123,7 @@ UserManager::iterator UserManager::find_by_sockfd(const int& sockfd) {
 }
 
 void UserManager::broadcast(const char* s, const int& length) const {
-	write(1, s, length);
+	// write(1, s, length);
 	for(auto& user: *this) {
 		user.send(s, length);
 	}

@@ -8,6 +8,7 @@
 #include <fstream>
 
 #include "number_pipe.h"
+#include "type.h"
 
 #define DEFAULT_NICKNAME "(no name)"
 
@@ -16,16 +17,19 @@ using std::vector;
 using std::ostream;
 
 class User {
-	vector<pair<string,string>> environ;
 public:
+	vector<pair<string,string>> environ;
 	int id;
 	sockaddr_in addr;
 	int sockfd;
+	User* parent;
 	string nickname;
 	number_pipe number_pipe_manager;
+	bool in_child;
 
 	User();
 	bool operator==(const User&) const;
+	bool operator!=(const User&) const;
 	operator bool() const;
 	void send(const char*, const int&) const;
 	void send(const char*) const;
