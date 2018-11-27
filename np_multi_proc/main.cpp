@@ -148,9 +148,14 @@ int bin_tell(
 			break;
 		}
 	}
-	string s = "*** " + me.nickname + " " + (yell ? "yelled" : "told you") + " ***: " + message + "\n";
+	string s = to_string(me.id) + " " + argv[0];
+	if (!yell) {
+		s += " "s + argv[1];
+	}
+	s += " \""s + message + "\"";
 	if (yell) {
-		user_manager.broadcast(s);
+		me.send("*** " + me.nickname + " yelled ***: " + message + "\n");
+		me.parent->send(s);
 	} else {
 		int user_id = atoi(argv[1]);
 		auto user_itr = user_manager.find_by_id(user_id);
@@ -158,7 +163,7 @@ int bin_tell(
 			string error_s = string("*** Error: user #") + argv[1] + " does not exist yet. ***\n";
 			me.send(error_s);
 		} else {
-			user_itr->send(s);
+			me.parent->send(s);
 		}
 	}
 	return 0;
@@ -251,7 +256,7 @@ void start_remote_shell(int me_id, const int& to_child) {
 			me.setenv();
 			if (input_command(me.sockfd, buf, BUF_SIZE)) {
 				if (strlen(buf) > 0) {
-					fprintf(stderr, "child: %d: %s\n", me.id, buf);
+					fprintf(stderr, "child%d: %s\n", me.id, buf);
 					string error_s = "";
 					me.number_pipe_manager.reduce_count();
 					job curr_job(buf);
@@ -349,15 +354,19 @@ void start_remote_shell(int me_id, const int& to_child) {
 			if (input_command(curr_fd, buf, BUF_SIZE)) {
 				fprintf(stderr, "parent->%d: %s\n", me.id, buf);
 				int user_id;
-				char cmd[1024];
-				sscanf(buf, "%d %s", &user_id, cmd);
+				string cmd;
+				{
+					char cmd_[1024];
+					sscanf(buf, "%d %s", &user_id, cmd_);
+					cmd = cmd_;
+				}
 				auto user_itr = user_manager.find_by_id(user_id);
-				if (strcmp(cmd, "login") == 0) {
+				if (cmd == "login") {
 					if (user_id != me.id) {
-						char nickname[33];
+						char nickname[32];
 						User user;
 						user.id = user_id;
-						sscanf(buf, "%*d %*s %d \"%32[^\"]\" %u %hu", &user.sockfd, nickname, &user.addr.sin_addr.s_addr, &user.addr.sin_port);
+						sscanf(buf, "%*d %*s %d \"%31[^\"]\" %u %hu", &user.sockfd, nickname, &user.addr.sin_addr.s_addr, &user.addr.sin_port);
 						user.nickname = nickname;
 						user_manager.login(user);
 						me_itr = user_manager.find_by_id(me_id);
@@ -365,9 +374,9 @@ void start_remote_shell(int me_id, const int& to_child) {
 						ss << "*** User '" << user.nickname << "' entered from " << user.addr << ". ***" << endl;
 						me_itr->send(ss.str());
 					}
-				} else if (strcmp(cmd, "name") == 0) {
-					char nickname[33];
-					sscanf(buf, "%*d %*s \"%32[^\"]\"", nickname);
+				} else if (cmd == "name") {
+					char nickname[32];
+					sscanf(buf, "%*d %*s \"%31[^\"]\"", nickname);
 					printf("%d\n", *user_itr != me);
 					if (*user_itr != me) {
 						user_itr->nickname = nickname;
@@ -375,12 +384,22 @@ void start_remote_shell(int me_id, const int& to_child) {
 						ss << "*** User from " << user_itr->addr << " is named '" << user_itr->nickname << "'. ***" << endl;
 						me.send(ss.str());
 					}
-				} else if (strcmp(cmd, "exit") == 0) {
+				} else if (cmd == "exit") {
 					if (me == *user_itr) {
 						exit_flag = true;
 					}
 					user_manager.logout(user_itr);
 					me_itr->send("*** User '" + user_itr->nickname + "' left. ***\n");
+				} else if (cmd == "yell") {
+					if (*user_itr != me) {
+						char message[1024];
+						sscanf(buf, "%*d %*s \"%1023[^\"]\"", message);
+						me_itr->send("*** " + user_itr->nickname + " yelled ***: " + message + "\n");
+					}
+				} else if (cmd == "tell") {
+					char message[1024];
+					sscanf(buf, "%*d %*s %*d \"%1023[^\"]\"", message);
+					me_itr->send("*** " + user_itr->nickname + " told you ***: " + message + "\n");
 				}
 			}
 		} else {
@@ -450,7 +469,7 @@ int main(int argc, char* argv[]) {
 			} else {
 				char ip_address[INET_ADDRSTRLEN];
 				inet_ntop(AF_INET, &(client_addr.sin_addr), ip_address, INET_ADDRSTRLEN);
-				fprintf(stderr, "child: connected from %s:%u\n", ip_address, client_addr.sin_port);
+				fprintf(stderr, "child%d: connected from %s:%u\n", me.id, ip_address, client_addr.sin_port);
 				// me.in_child = true;
 				me.parent = new User();
 				me.parent->id = 0;
@@ -471,22 +490,38 @@ int main(int argc, char* argv[]) {
 		} else {
 			if (input_command(curr_fd, buf, BUF_SIZE)) {
 				int user_id;
-				char cmd[1024];
-				sscanf(buf, "%d %s", &user_id, cmd);
+				string cmd;
+				{
+					char cmd_[1024];
+					sscanf(buf, "%d %s", &user_id, cmd_);
+					cmd = cmd_;
+				}
 				auto user_itr = user_manager.find_by_id(user_id);
 				if (user_itr == user_manager.end()) {
-					error("???");
+					error("%s: invalid sender %d", cmd.c_str(), user_id);
 				} else {
-					user_manager.broadcast(buf);
-					if (strcmp(cmd, "name") == 0) {
-						char nickname[33];
-						sscanf(buf, "%*d %*s \"%32[^\"]\"", nickname);
+					if (cmd == "name") {
+						char nickname[322];
+						sscanf(buf, "%*d %*s \"%31[^\"]\"", nickname);
 						user_itr->nickname = nickname;
-					} else if (strcmp(cmd, "exit") == 0) {
+						user_manager.broadcast(buf);
+					} else if (cmd == "exit") {
+						user_manager.broadcast(buf);
 						close(user_itr->sockfd);
 						user_manager.logout(user_itr);
 						close(curr_fd);
 						FD_CLR(curr_fd, &master);
+					} else if (cmd == "yell") {
+						user_manager.broadcast(buf);
+					} else if (cmd == "tell") {
+						int user2_id;
+						sscanf(buf, "%*d %*s %d", &user2_id);
+						auto user2_itr = user_manager.find_by_id(user2_id);
+						if (user2_itr == user_manager.end()) {
+							error("tell: invalid receiver %d", user2_id);
+						} else {
+							user2_itr->send(buf);
+						}
 					}
 				}
 			}

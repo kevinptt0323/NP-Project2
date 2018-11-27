@@ -99,7 +99,6 @@ void UserManager::logout(const int& i) {
 }
 
 void UserManager::logout(const iterator& itr) {
-	fprintf(stderr, "logout %lu\n", itr->number_pipe_manager.size());
 	itr->number_pipe_manager.close();
 	itr->id = -1;
 	itr->sockfd = -1;
