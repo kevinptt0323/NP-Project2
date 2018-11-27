@@ -158,7 +158,7 @@ int job::exec(Args args) {
 			close(pipe_in_i[0]);
 		}
 		if (pipe_out_i[1] != OUT_FILENO) {
-			if ((pipe_next_n == 0 && !pipe_user) || i != size()-1) {
+			if (pipe_next_n == 0 || i != size()-1) {
 				close(pipe_out_i[1]);
 			}
 		}

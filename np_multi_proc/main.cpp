@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <sys/stat.h>
 
 #include "builtin.h"
 #include "command.h"
@@ -71,42 +72,30 @@ char* input_command(int fd, char* buf, int bufsize) {
 	return buf;
 }
 
-map<pair<int,int>,Fd2> user_pipes;
+UserManager user_manager;
 
-Fd2* get_user_pipe(const User& user1, const User& user2) {
-	auto key = make_pair(user1.id, user2.id);
-	auto itr = user_pipes.find(key);
-	if (itr != user_pipes.end()) {
-		return &itr->second;
-	}
-	return NULL;
+string user_pipe_name(const User& user1, const User& user2) {
+	return "user_pipe/fifo_" + to_string(user1.id) + "_" + to_string(user2.id);
 }
 
-void set_user_pipe(const User& user1, const User& user2, const Fd2& fd) {
-	return;
-	auto key = make_pair(user1.id, user2.id);
-	printf("set %d %d\n", user1.id, user2.id);
-	user_pipes[key] = fd;
+bool check_user_pipe(const User& user1, const User& user2) {
+	string fifoname = user_pipe_name(user1, user2);
+	return access( fifoname.c_str(), F_OK ) != -1;
 }
 
-void clear_user_pipe(const User& user1, const User& user2) {
-	return;
-	auto key = make_pair(user1.id, user2.id);
-	printf("clear %d %d\n", user1.id, user2.id);
-	user_pipes.erase(key);
+int open_user_pipe(const User& user1, const User& user2, int flag) {
+	string fifoname = user_pipe_name(user1, user2);
+	// mkfifo(fifoname.c_str(), 0644);
+	int fd = open(fifoname.c_str(), flag | O_CREAT, 0644);
+	return fd;
 }
 
 void clear_user_pipe(const User& user) {
-	return;
-	for(auto itr=user_pipes.begin(); itr!=user_pipes.end(); itr++) {
-		if (itr->first.first == user.id || itr->first.second == user.id) {
-			printf("erase %d %d\n", itr->first.first, itr->first.second);
-			user_pipes.erase(itr);
-		}
+	for(const auto& user2: user_manager) {
+		unlink(user_pipe_name(user, user2).c_str());
+		unlink(user_pipe_name(user2, user).c_str());
 	}
 }
-
-UserManager user_manager;
 
 int bin_who(
 	UNUSED(const char *name),
@@ -197,6 +186,8 @@ int bin_break_2(
 	const Args& args
 ) {
 	User& me = args.get<User>("user");
+	me.send("*** User '" + me.nickname + "' left. ***\n");
+	exit_flag = true;
 	if (me.parent) {
 		me.parent->send(to_string(me.id) + " exit");
 	}
@@ -268,22 +259,22 @@ void start_remote_shell(int me_id, const int& to_child) {
 					if (~user_pipe_in) {
 						auto pipe_user_itr = user_manager.find_by_id(user_pipe_in);
 						if (pipe_user_itr != user_manager.end()) {
-							Fd2* user_pipe = get_user_pipe(*pipe_user_itr, me);
-							if (!user_pipe) {
+							if (!check_user_pipe(*pipe_user_itr, me)) {
 								error_s = "*** Error: the pipe #" + \
 											to_string(pipe_user_itr->id) + \
 											"->#" + \
 											to_string(me.id) + \
 											" does not exist yet. ***\n";
 							} else {
-								curr_job.pipe_in = *user_pipe;
-								clear_user_pipe(*pipe_user_itr, me);
+								curr_job.pipe_in = {open_user_pipe(*pipe_user_itr, me, O_RDONLY), -1};
+								unlink(user_pipe_name(*pipe_user_itr, me).c_str());
 								string s = "*** " + \
 											me.nickname + " (#" + to_string(me.id) + \
 											") just received from " + \
 											pipe_user_itr->nickname + " (#" + to_string(pipe_user_itr->id) + \
 											") by '" + buf + "' ***\n";
-								user_manager.broadcast(s);
+								me.send(s);
+								me.parent->send(to_string(me.id) + " read " + to_string(pipe_user_itr->id) + " \"" + buf + "\"");
 							}
 						} else {
 							error_s = "*** Error: user #" + to_string(user_pipe_in) + " does not exist yet. ***\n";
@@ -299,26 +290,22 @@ void start_remote_shell(int me_id, const int& to_child) {
 					if (~user_pipe_out) {
 						auto pipe_user_itr = user_manager.find_by_id(user_pipe_out);
 						if (pipe_user_itr != user_manager.end()) {
-							Fd2 *user_pipe = get_user_pipe(me, *pipe_user_itr);
-							if (user_pipe) {
+							if (check_user_pipe(me, *pipe_user_itr)) {
 								error_s = "*** Error: the pipe #" + \
 											to_string(me.id) + \
 											"->#" + \
 											to_string(pipe_user_itr->id) + \
 											" already exists. ***\n";
 							} else {
-								user_pipe = new Fd2();
-								pipe(user_pipe->data());
-								set_user_pipe(me, *pipe_user_itr, *user_pipe);
-								curr_job.pipe_out = *user_pipe;
+								curr_job.pipe_out = {-1, open_user_pipe(me, *pipe_user_itr, O_WRONLY)};
 								curr_job.pipe_user = true;
-								delete user_pipe;
 								string s = "*** " + \
 											me.nickname + " (#" + to_string(me.id) + \
 											") just piped '" + buf + "' to " + \
 											pipe_user_itr->nickname + " (#" + to_string(pipe_user_itr->id) + \
 											") ***\n";
-								user_manager.broadcast(s);
+								me.send(s);
+								me.parent->send(to_string(me.id) + " write " + to_string(pipe_user_itr->id) + " \"" + buf + "\"");
 							}
 						} else {
 							error_s = "*** Error: user #" + to_string(user_pipe_out) + " does not exist yet. ***\n";
@@ -349,7 +336,11 @@ void start_remote_shell(int me_id, const int& to_child) {
 				job("exit").exec();
 			}
 			me.getenv();
-			print_prompt(me.sockfd, prompt);
+			if (exit_flag) {
+				exit_flag = false;
+			} else {
+				print_prompt(me.sockfd, prompt);
+			}
 		} else if (curr_fd == to_child) {
 			if (input_command(curr_fd, buf, BUF_SIZE)) {
 				fprintf(stderr, "parent->%d: %s\n", me.id, buf);
@@ -377,7 +368,6 @@ void start_remote_shell(int me_id, const int& to_child) {
 				} else if (cmd == "name") {
 					char nickname[32];
 					sscanf(buf, "%*d %*s \"%31[^\"]\"", nickname);
-					printf("%d\n", *user_itr != me);
 					if (*user_itr != me) {
 						user_itr->nickname = nickname;
 						stringstream ss;
@@ -386,10 +376,12 @@ void start_remote_shell(int me_id, const int& to_child) {
 					}
 				} else if (cmd == "exit") {
 					if (me == *user_itr) {
+						clear_user_pipe(me);
 						exit_flag = true;
+					} else {
+						me_itr->send("*** User '" + user_itr->nickname + "' left. ***\n");
 					}
 					user_manager.logout(user_itr);
-					me_itr->send("*** User '" + user_itr->nickname + "' left. ***\n");
 				} else if (cmd == "yell") {
 					if (*user_itr != me) {
 						char message[1024];
@@ -400,6 +392,32 @@ void start_remote_shell(int me_id, const int& to_child) {
 					char message[1024];
 					sscanf(buf, "%*d %*s %*d \"%1023[^\"]\"", message);
 					me_itr->send("*** " + user_itr->nickname + " told you ***: " + message + "\n");
+				} else if (cmd == "write") {
+					if (*user_itr != me) {
+						char cmd[1024];
+						int u1_id, u2_id;
+						sscanf(buf, "%d %*s %d \"%1023[^\"]\"", &u1_id, &u2_id, cmd);
+						User &u1 = *user_manager.find_by_id(u1_id), &u2 = *user_manager.find_by_id(u2_id);
+						string s = "*** " + \
+									u1.nickname + " (#" + to_string(u1.id) + \
+									") just piped '" + cmd + "' to " + \
+									u2.nickname + " (#" + to_string(u2.id) + \
+									") ***\n";
+						me_itr->send(s);
+					}
+				} else if (cmd == "read") {
+					if (*user_itr != me) {
+						char cmd[1024];
+						int u1_id, u2_id;
+						sscanf(buf, "%d %*s %d \"%1023[^\"]\"", &u1_id, &u2_id, cmd);
+						User &u1 = *user_manager.find_by_id(u1_id), &u2 = *user_manager.find_by_id(u2_id);
+						string s = "*** " + \
+									u1.nickname + " (#" + to_string(u1.id) + \
+									") just received from " + \
+									u2.nickname + " (#" + to_string(u2.id) + \
+									") by '" + cmd + "' ***\n";
+						me_itr->send(s);
+					}
 				}
 			}
 		} else {
@@ -456,8 +474,6 @@ int main(int argc, char* argv[]) {
 				fprintf(stderr, "parent: child_pid = %d\n", child_pid);
 				close(me.sockfd);
 
-				fprintf(stderr, "%d : [%d %d] [%d %d]\n", me.id, to_parent[0], to_parent[1], to_child[0], to_child[1]);
-
 				FD_SET(to_parent[0], &master);
 				max_fd = max(max_fd, to_parent[0]);
 				me.sockfd = to_child[1];
@@ -477,7 +493,6 @@ int main(int argc, char* argv[]) {
 				start_remote_shell(me.id, to_child[0]);
 				// string s = "*** User '" + me.nickname + "' left. ***\n";
 				User& me = user_manager[client_sockfd];
-				clear_user_pipe(me);
 				close(me.parent->sockfd);
 				FD_CLR(me.parent->sockfd, &master);
 				delete me.parent;
@@ -522,6 +537,8 @@ int main(int argc, char* argv[]) {
 						} else {
 							user2_itr->send(buf);
 						}
+					} else if (cmd == "write" || cmd == "read") {
+						user_manager.broadcast(buf);
 					}
 				}
 			}
