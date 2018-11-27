@@ -257,7 +257,7 @@ int main(int argc, char* argv[]) {
 										          to_string(me.id) + \
 										          " does not exist yet. ***\n";
 									} else {
-										curr_job.pipe_in = *user_pipe;
+										curr_job.pipe_in = {(*user_pipe)[0], -1};
 										clear_user_pipe(*pipe_user_itr, me);
 										printf("in %d %d\n", curr_job.pipe_in[0], curr_job.pipe_in[1]);
 										string s = "*** " + \
